@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Presidential Actions (Dictionary-Style JSON)</title>
+  <!-- DataTables CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
+  />
+  <style>
+    /* Let table cells wrap long text */
+    td {
+      white-space: normal;
+    }
+    /* Give the Analysis column more space */
+    #actionsTable th:nth-child(5), 
+    #actionsTable td:nth-child(5) {
+      width: 35%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Presidential Actions (Dictionary-Style JSON)</h1>
+
+  <!-- Table to display the data -->
+  <table id="actionsTable" class="display">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Date</th>
+        <th>Link</th>
+        <th>Category</th>
+        <th>Analysis</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <!-- DataTables JS -->
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+
+  <script>
+    // Replace with your publicly accessible S3 URL for the dictionary JSON
+    const DATA_URL = "https://whpresidentialactionsjsons.s3.us-east-1.amazonaws.com/gpt_responses.json";
+
+    // A simple helper to convert any HTML-special chars to safe text
+    // (so we can safely insert <br> without risking injection).
+    function escapeHtml(str) {
+      return str.replace(/[&<>]/g, (tag) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;"
+      }[tag] || tag));
+    }
+
+    fetch(DATA_URL)
+      .then(response => response.json())
+      .then(data => {
+        const tableBody = document.querySelector("#actionsTable tbody");
+
+        // data is a DICTIONARY => Object.entries => [key, value]
+        Object.entries(data).forEach(([actionLink, item]) => {
+          const row = document.createElement("tr");
+
+          // Title
+          const tdTitle = document.createElement("td");
+          tdTitle.textContent = item.title || "Unknown";
+          row.appendChild(tdTitle);
+
+          // Date
+          const tdDate = document.createElement("td");
+          tdDate.textContent = item.date || "Unknown";
+          row.appendChild(tdDate);
+
+          // Link
+          const tdLink = document.createElement("td");
+          if (actionLink.startsWith("http")) {
+            const linkAnchor = document.createElement("a");
+            linkAnchor.href = actionLink;
+            linkAnchor.target = "_blank";
+            linkAnchor.textContent = "View";
+            tdLink.appendChild(linkAnchor);
+          } else {
+            tdLink.textContent = "None";
+          }
+          row.appendChild(tdLink);
+
+          // Category
+          const tdCategory = document.createElement("td");
+          tdCategory.textContent = item.category || "N/A";
+          row.appendChild(tdCategory);
+
+          // Analysis (add line breaks for "1) ... 2) ..." and for any \n)
+          const tdAnalysis = document.createElement("td");
+
+          if (item.analysis) {
+            // 1. Escape HTML special chars so we can safely insert <br>
+            let safeText = escapeHtml(item.analysis);
+            // 2. Convert newlines (\n) to <br>
+            safeText = safeText.replace(/\n/g, "<br>");
+            // 3. Insert a <br> before any digit pattern like "1) " or "2) "
+            //    so each number-based section goes on a new line
+            safeText = safeText.replace(/(\d+\)\s)/g, "<br>$1");
+
+            tdAnalysis.innerHTML = safeText;
+          } else {
+            tdAnalysis.textContent = "No Analysis";
+          }
+          row.appendChild(tdAnalysis);
+
+          tableBody.appendChild(row);
+        });
+
+        // Initialize DataTables
+        $("#actionsTable").DataTable();
+      })
+      .catch(error => {
+        console.error("Error fetching JSON:", error);
+      });
+  </script>
+</body>
+</html>
