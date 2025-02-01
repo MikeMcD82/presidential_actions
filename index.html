@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Ensure proper scaling on mobile devices -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Presidential Actions - A @M_McDonough Experiment</title>
+
+  <!-- Google Tag Manager (gtag.js) - optional -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-96WRJNJ5NH"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-96WRJNJ5NH');
+  </script>
+
+  <!-- CSS Libraries -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />
+
+  <style>
+    /* Custom styles for the detail (first) column */
+    td.details-control {
+      cursor: pointer;
+      text-align: center;
+    }
+    /* Set a fixed (narrower) width for the first column */
+    th:nth-child(1),
+    td:nth-child(1) {
+      width: 30px;
+      text-align: center;
+    }
+    /* Override Bootstrap's button styles for our detail button:
+       - Thinner border (0.5px)
+       - Border color matches slider green (#123524) */
+    td.details-control button.btn-outline-secondary {
+      padding: 0.1rem 0.2rem !important;
+      font-size: 0.7rem !important;
+      border: 0.5px solid #123524 !important;
+      border-radius: 3px !important;
+    }
+    /* Let charts fill their container */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    /* Minimal styling for the noUiSlider container */
+    #sliderRange {
+      margin: 20px 0;
+    }
+    /* Extra padding on mobile for the container and table adjustments */
+    @media (max-width: 576px) {
+      .container {
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+      }
+      .table-responsive table {
+        font-size: 0.9rem;
+      }
+      .table-responsive th,
+      .table-responsive td {
+        padding: 0.5rem;
+      }
+      .table-responsive th:nth-child(1),
+      .table-responsive td:nth-child(1) {
+        width: 25px;
+      }
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container my-4">
+    <header class="mb-4 text-center">
+      <h1>Presidential Actions - A @M_McDonough Experiment</h1>
+    </header>
+
+    <!-- noUiSlider Range Card -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Filter by Posted Date &amp; Time</h5>
+      </div>
+      <div class="card-body">
+        <div id="sliderRange"></div>
+        <div class="mt-2">
+          Showing posts from <span id="sliderMin" class="fw-bold"></span> to <span id="sliderMax" class="fw-bold"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main DataTable -->
+    <div class="table-responsive">
+      <table id="actionsTable" class="table table-striped table-hover align-middle w-100">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Title</th>
+            <th>AI-Identified Topics</th>
+            <th>Posted</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Charts Section -->
+    <section class="mt-5">
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header">
+              <h5 class="card-title mb-0">Actions Posted by Day (Dynamic)</h5>
+            </div>
+            <div class="card-body" style="height: 400px;">
+              <div class="chart-container">
+                <canvas id="dailyChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header">
+              <h5 class="card-title mb-0">Time of Day Posted (Dynamic)</h5>
+            </div>
+            <div class="card-body" style="height: 400px;">
+              <div class="chart-container">
+                <canvas id="hourChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-5">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Highest Topic Frequency (Dynamic, Work In Progress)</h5>
+        </div>
+        <div class="card-body" style="height: 400px;">
+          <div class="chart-container">
+            <canvas id="topicChart"></canvas>
+          </div>
+          <small class="text-muted">
+            Note: if a row has multiple comma-separated topics (e.g. "<em>Immigration, Economy</em>"), it is counted once in each category.
+          </small>
+        </div>
+      </div>
+    </section>
+  </div><!-- end container -->
+
+  <!-- JS Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    (function() {
+      "use strict";
+
+      // --- Constants ---
+      const DATA_URL = "https://whpresidentialactionsjsons.s3.us-east-1.amazonaws.com/gpt_responses.json";
+      const ONE_MINUTE = 60000; // Slider step in ms
+
+      // --- Global Variables ---
+      const rowData = [];
+      const allDateLabels = [];
+      const hourLabels = Array.from({ length: 24 }, (_, i) => i.toString());
+      let minTS = Infinity, maxTS = -Infinity;
+      let table, dailyChart, hourChart, topicChart;
+      let sliderMin, sliderMax;
+
+      // --- Utility Functions ---
+      // Revert to the original formatting: using local time from the Date object
+      const formatUnixDateTime = (unixMs) => {
+        const d = new Date(unixMs);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        return `${y}-${m}-${day} ${hh}:${mm}`;
+      };
+
+      const formatYmd = (dateObj) => {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const d = String(dateObj.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      };
+
+      // Simple sanitization using textContent
+      const sanitizeText = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      };
+
+      const formatChildRow = (data) => {
+        if (!data.analysisHidden) return "<em>No Analysis</em>";
+        const safeText = sanitizeText(data.analysisHidden)
+          .replace(/^\s+/, "")
+          .replace(/\n(\d+\)\s)/g, "<br>$1")
+          .replace(/\n/g, "<br>");
+        return `
+          <div style="text-align:left;">
+            <strong>AI Analysis:</strong><br>
+            ${safeText}
+          </div>
+        `;
+      };
+
+      // --- Chart Creation Functions ---
+      const createDailyChart = (dateLabels) => {
+        const ctx = document.getElementById("dailyChart").getContext("2d");
+        return new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: dateLabels,
+            datasets: [{
+              label: "Actions / Day",
+              data: dateLabels.map(() => 0),
+              backgroundColor: "rgba(255, 99, 132, 0.6)",
+              borderColor: "rgba(255, 99, 132, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { title: { display: true, text: "Date (YYYY-MM-DD)" } },
+              y: { beginAtZero: true, title: { display: true, text: "Number of Actions" } }
+            }
+          }
+        });
+      };
+
+      const createHourChart = (hourArr) => {
+        const ctx = document.getElementById("hourChart").getContext("2d");
+        return new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: hourArr,
+            datasets: [{
+              label: "Actions by Hour",
+              data: new Array(24).fill(0),
+              backgroundColor: "rgba(54, 162, 235, 0.6)",
+              borderColor: "rgba(54, 162, 235, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { title: { display: true, text: "Hour of Day (Local)" } },
+              y: { beginAtZero: true, title: { display: true, text: "Number of Actions" } }
+            }
+          }
+        });
+      };
+
+      const createTopicChart = () => {
+        const ctx = document.getElementById("topicChart").getContext("2d");
+        return new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: [],
+            datasets: [{
+              label: "Topic Frequency",
+              data: [],
+              backgroundColor: "rgba(75, 192, 192, 0.6)",
+              borderColor: "rgba(75, 192, 192, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { beginAtZero: true, title: { display: true, text: "Occurrences" } },
+              y: { title: { display: false } }
+            }
+          }
+        });
+      };
+
+      // --- Update Charts Based on Table Data ---
+      const updateChartsFromTable = () => {
+        const displayed = table.rows({ filter: 'applied' }).data();
+        const dailyMap = {};
+        const hourArr = new Array(24).fill(0);
+        const topicCounter = {};
+
+        displayed.each(item => {
+          const dt = new Date(item.postedSort);
+          const ymd = formatYmd(dt);
+          dailyMap[ymd] = (dailyMap[ymd] || 0) + 1;
+          hourArr[dt.getHours()]++;
+          (item.topic || "Other").split(",").forEach(topic => {
+            const t = topic.trim();
+            if (t && t.length <= 40) {
+              topicCounter[t] = (topicCounter[t] || 0) + 1;
+            }
+          });
+        });
+
+        // Update dailyChart
+        dailyChart.data.datasets[0].data = dailyChart.data.labels.map(date => dailyMap[date] || 0);
+        dailyChart.update();
+
+        // Update hourChart
+        hourChart.data.datasets[0].data = hourArr;
+        hourChart.update();
+
+        // Update topicChart with top 10 topics
+        const topTopics = Object.entries(topicCounter)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 10);
+        topicChart.data.labels = topTopics.map(([topic]) => topic);
+        topicChart.data.datasets[0].data = topTopics.map(([, count]) => count);
+        topicChart.update();
+      };
+
+      // --- Data Fetching and Initialization ---
+      const initData = async () => {
+        try {
+          // Note: The URL includes a cache-busting parameter to disable caching.
+          const response = await fetch(`${DATA_URL}?nocache=${Date.now()}`);
+          const data = await response.json();
+
+          // Process data and determine global min/max timestamps
+          Object.entries(data).forEach(([link, item]) => {
+            const ts = new Date(item.date_unix).getTime();
+            minTS = Math.min(minTS, ts);
+            maxTS = Math.max(maxTS, ts);
+            const topicVal = (item.topic || "Other")
+              .replace(/topical classification:\s*/i, "")
+              .replace(/\./g, "")
+              .trim();
+
+            rowData.push({
+              title: item.title || "Unknown",
+              topic: topicVal,
+              postedDisplay: formatUnixDateTime(ts),
+              postedSort: ts,
+              linkUrl: link.startsWith("http") ? link : null,
+              analysisHidden: item.analysis || null
+            });
+          });
+
+          // Build locked daily date labels from earliest to latest day
+          const minDate = new Date(minTS);
+          minDate.setHours(0, 0, 0, 0);
+          const maxDate = new Date(maxTS);
+          maxDate.setHours(0, 0, 0, 0);
+          for (let cur = new Date(minDate); cur <= maxDate; cur.setDate(cur.getDate() + 1)) {
+            allDateLabels.push(formatYmd(new Date(cur)));
+          }
+
+          // Initialize DataTable with modified columns (removed Link column)
+          table = $("#actionsTable").DataTable({
+            data: rowData,
+            columns: [
+              {
+                title: "",
+                className: "details-control",
+                orderable: false,
+                data: null,
+                defaultContent: `
+                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Show AI Analysis">
+                    <i class="bi bi-plus-circle"></i>
+                  </button>
+                `
+              },
+              {
+                data: "title",
+                title: "Title",
+                render: (data, type, row) => {
+                  if (type === "display" && row.linkUrl) {
+                    return `<a href="${row.linkUrl}" target="_blank" class="text-decoration-none" data-bs-toggle="tooltip" title="Open the official action on WhiteHouse.gov">${data}</a>`;
+                  }
+                  return data;
+                }
+              },
+              { data: "topic", title: "AI-Identified Topics" },
+              {
+                data: "postedSort",
+                title: "Posted",
+                type: "num",
+                render: (val, type, row) => type === "sort" ? val : row.postedDisplay
+              },
+              { data: "analysisHidden", visible: false, searchable: true }
+            ],
+            order: [[3, "desc"]],
+            responsive: true
+          });
+
+          // Toggle child rows on click (using button for clarity)
+          $("#actionsTable tbody").on("click", "td.details-control", function() {
+            const tr = $(this).closest("tr");
+            const row = table.row(tr);
+            const btn = this.querySelector("button");
+            if (btn) {
+              const tipInst = bootstrap.Tooltip.getInstance(btn);
+              if (tipInst) tipInst.hide();
+            }
+            if (row.child.isShown()) {
+              row.child.hide();
+              tr.removeClass("shown");
+              $(this).html(`
+                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Show AI Analysis">
+                  <i class="bi bi-plus-circle"></i>
+                </button>
+              `);
+            } else {
+              row.child(formatChildRow(row.data())).show();
+              tr.addClass("shown");
+              $(this).html(`
+                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Hide AI Analysis">
+                  <i class="bi bi-dash-circle"></i>
+                </button>
+              `);
+            }
+            // Reinitialize tooltip for the new button element
+            new bootstrap.Tooltip(this.firstElementChild);
+          });
+
+          // Initialize tooltips on static elements
+          document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            new bootstrap.Tooltip(el);
+          });
+
+          // Create charts with locked axes
+          dailyChart = createDailyChart(allDateLabels);
+          hourChart  = createHourChart(hourLabels);
+          topicChart = createTopicChart();
+
+          // Set up noUiSlider for filtering
+          sliderMin = minTS;
+          sliderMax = maxTS;
+          $.fn.dataTable.ext.search.push((settings, rowData_, dataIndex) => {
+            const rowObj = table.row(dataIndex).data();
+            return rowObj.postedSort >= sliderMin && rowObj.postedSort <= sliderMax;
+          });
+
+          const sliderEl = document.getElementById("sliderRange");
+          noUiSlider.create(sliderEl, {
+            start: [minTS, maxTS],
+            connect: true,
+            step: ONE_MINUTE,
+            range: { min: minTS, max: maxTS },
+            tooltips: false
+          });
+
+          sliderEl.noUiSlider.on('update', (values, handle, unencoded) => {
+            sliderMin = unencoded[0];
+            sliderMax = unencoded[1];
+            $("#sliderMin").text(formatUnixDateTime(sliderMin));
+            $("#sliderMax").text(formatUnixDateTime(sliderMax));
+            table.draw();
+          });
+
+          table.on("draw", updateChartsFromTable);
+          updateChartsFromTable();
+
+        } catch (err) {
+          console.error("Error fetching JSON:", err);
+        }
+      };
+
+      document.addEventListener('DOMContentLoaded', initData);
+    })();
+  </script>
+</body>
+</html>
